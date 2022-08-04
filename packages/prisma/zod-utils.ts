@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { LocationType } from "@calcom/core/location";
+import { LocationType } from "@calcom/app-store/locations";
 import dayjs from "@calcom/dayjs";
 import { slugify } from "@calcom/lib/slugify";
 
@@ -92,6 +92,7 @@ export const extendedBookingCreateBody = bookingCreateBodySchema.merge(
     noEmail: z.boolean().optional(),
     recurringCount: z.number().optional(),
     rescheduleReason: z.string().optional(),
+    smsReminderNumber: z.string().optional(),
   })
 );
 
@@ -110,3 +111,19 @@ export const userMetadata = z
     intentUsername: z.string().optional(),
   })
   .nullable();
+
+/**
+ * Ensures that it is a valid HTTP URL
+ * It automatically avoids
+ * -  XSS attempts through javascript:alert('hi')
+ * - mailto: links
+ */
+export const successRedirectUrl = z
+  .union([
+    z.literal(""),
+    z
+      .string()
+      .url()
+      .regex(/^http(s)?:\/\/.*/),
+  ])
+  .optional();
