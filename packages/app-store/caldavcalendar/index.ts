@@ -3,11 +3,11 @@ import type { App } from "@calcom/types/App";
 import _package from "./package.json";
 
 export const metadata = {
-  name: "CalDav Server",
+  name: "CalDav (Beta)",
   description: _package.description,
   installed: true,
   type: "caldav_calendar",
-  title: "CalDav Server",
+  title: "CalDav (Beta)",
   imageSrc: "/api/app-store/caldavcalendar/icon.svg",
   variant: "calendar",
   category: "calendar",
@@ -23,5 +23,4 @@ export const metadata = {
 } as App;
 
 export * as api from "./api";
-export * as components from "./components";
 export * as lib from "./lib";

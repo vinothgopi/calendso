@@ -57,6 +57,7 @@ async function getUserFromSession({
           key: true,
           userId: true,
           appId: true,
+          invalid: true,
         },
         orderBy: {
           id: "asc",
@@ -73,6 +74,7 @@ async function getUserFromSession({
       locale: true,
       timeFormat: true,
       trialEndsAt: true,
+      metadata: true,
     },
   });
 
@@ -84,6 +86,9 @@ async function getUserFromSession({
   if (!email) {
     return null;
   }
+  // This helps to prevent reaching the 4MB payload limit by avoiding base64 and instead passing the avatar url
+  // TODO: Setting avatar value to /avatar.png(which is a dynamic route) would actually reset the avatar because /avatar.png is supposed to return the value of user.avatar
+  // if (user.avatar) user.avatar = `${CAL_URL}/${user.username}/avatar.png`;
   const avatar = user.avatar || defaultAvatarSrc({ email });
 
   const locale = user.locale || getLocaleFromHeaders(req);
@@ -100,9 +105,9 @@ async function getUserFromSession({
  * Creates context for an incoming request
  * @link https://trpc.io/docs/context
  */
-export const createContext = async ({ req }: CreateContextOptions) => {
+export const createContext = async ({ req }: CreateContextOptions, sessionGetter = getSession) => {
   // for API-response caching see https://trpc.io/docs/caching
-  const session = await getSession({ req });
+  const session = await sessionGetter({ req });
 
   const user = await getUserFromSession({ session, req });
   const locale = user?.locale ?? getLocaleFromHeaders(req);

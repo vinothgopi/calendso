@@ -1,5 +1,3 @@
-import { Credential } from "@prisma/client";
-
 import { getLocation, getRichDescription } from "@calcom/lib/CalEventParser";
 import logger from "@calcom/lib/logger";
 import prisma from "@calcom/prisma";
@@ -11,6 +9,7 @@ import type {
   IntegrationCalendar,
   NewCalendarEventType,
 } from "@calcom/types/Calendar";
+import { CredentialPayload } from "@calcom/types/Credential";
 
 import { handleLarkError, isExpired, LARK_HOST } from "../common";
 import type {
@@ -36,13 +35,13 @@ export default class LarkCalendarService implements Calendar {
   private log: typeof logger;
   auth: { getToken: () => Promise<string> };
 
-  constructor(credential: Credential) {
+  constructor(credential: CredentialPayload) {
     this.integrationName = "lark_calendar";
     this.auth = this.larkAuth(credential);
     this.log = logger.getChildLogger({ prefix: [`[[lib] ${this.integrationName}`] });
   }
 
-  private larkAuth = (credential: Credential) => {
+  private larkAuth = (credential: CredentialPayload) => {
     const larkAuthCredentials = credential.key as LarkAuthCredentials;
     return {
       getToken: () =>
@@ -52,26 +51,17 @@ export default class LarkCalendarService implements Calendar {
     };
   };
 
-  private refreshAccessToken = async (credential: Credential) => {
+  private refreshAccessToken = async (credential: CredentialPayload) => {
     const larkAuthCredentials = credential.key as LarkAuthCredentials;
     const refreshExpireDate = larkAuthCredentials.refresh_expires_date;
     const refreshToken = larkAuthCredentials.refresh_token;
     if (isExpired(refreshExpireDate) || !refreshToken) {
-      const res = await fetch("/api/integrations", {
-        method: "DELETE",
-        body: JSON.stringify({ id: credential.id }),
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      if (!res.ok) {
-        throw new Error("disconnection wrong");
-      }
-      throw new Error("refresh token expires");
+      await prisma.credential.delete({ where: { id: credential.id } });
+      throw new Error("Lark Calendar refresh token expired");
     }
     try {
       const appAccessToken = await getAppAccessToken();
-      const resp = await this.fetcher(`/authen/v1/refresh_access_token`, {
+      const resp = await fetch(`${this.url}/authen/v1/refresh_access_token`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${appAccessToken}`,
@@ -84,8 +74,15 @@ export default class LarkCalendarService implements Calendar {
       });
 
       const data = await handleLarkError<RefreshTokenResp>(resp, this.log);
+      this.log.debug(
+        "LarkCalendarService refreshAccessToken data refresh_expires_in",
+        data.data.refresh_expires_in,
+        "and access token expire in",
+        data.data.expires_in
+      );
       const newLarkAuthCredentials: LarkAuthCredentials = {
-        ...larkAuthCredentials,
+        refresh_token: data.data.refresh_token,
+        refresh_expires_date: Math.round(+new Date() / 1000 + data.data.refresh_expires_in),
         access_token: data.data.access_token,
         expiry_date: Math.round(+new Date() / 1000 + data.data.expires_in),
       };
@@ -107,7 +104,13 @@ export default class LarkCalendarService implements Calendar {
   };
 
   private fetcher = async (endpoint: string, init?: RequestInit | undefined) => {
-    const accessToken = await this.auth.getToken();
+    let accessToken = "";
+    try {
+      accessToken = await this.auth.getToken();
+    } catch (error) {
+      throw new Error("get access token error");
+    }
+
     return fetch(`${this.url}${endpoint}`, {
       method: "GET",
       headers: {
@@ -269,9 +272,6 @@ export default class LarkCalendarService implements Calendar {
 
       const response = await this.fetcher(`/calendar/v4/freebusy/batch_get`, {
         method: "POST",
-        headers: {
-          "x-tt-env": "boe_wangzichao",
-        },
         body: JSON.stringify({
           time_min: dateFrom,
           time_max: dateTo,

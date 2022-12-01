@@ -19,55 +19,73 @@ export const scheduleWorkflowReminders = async (
   })[],
   smsReminderNumber: string | null,
   evt: CalendarEvent,
-  needsConfirmation: boolean
+  needsConfirmation: boolean,
+  isRescheduleEvent: boolean,
+  isFirstRecurringEvent: boolean
 ) => {
   if (workflows.length > 0 && !needsConfirmation) {
     workflows.forEach((workflowReference) => {
-      if (workflowReference.workflow.steps.length > 0) {
-        const workflow = workflowReference.workflow;
-        if (
-          workflow.trigger === WorkflowTriggerEvents.BEFORE_EVENT ||
-          workflow.trigger === WorkflowTriggerEvents.NEW_EVENT
-        ) {
-          workflow.steps.forEach(async (step) => {
-            if (step.action === WorkflowActions.SMS_ATTENDEE || step.action === WorkflowActions.SMS_NUMBER) {
-              const sendTo = step.action === WorkflowActions.SMS_ATTENDEE ? smsReminderNumber : step.sendTo;
-              await scheduleSMSReminder(
-                evt,
-                sendTo,
-                workflow.trigger,
-                step.action,
-                {
-                  time: workflow.time,
-                  timeUnit: workflow.timeUnit,
-                },
-                step.reminderBody || "",
-                step.id,
-                step.template
-              );
-            } else if (
-              step.action === WorkflowActions.EMAIL_ATTENDEE ||
-              step.action === WorkflowActions.EMAIL_HOST
-            ) {
-              const sendTo =
-                step.action === WorkflowActions.EMAIL_HOST ? evt.organizer.email : evt.attendees[0].email;
-              scheduleEmailReminder(
-                evt,
-                workflow.trigger,
-                step.action,
-                {
-                  time: workflow.time,
-                  timeUnit: workflow.timeUnit,
-                },
-                sendTo,
-                step.emailSubject || "",
-                step.reminderBody || "",
-                step.id,
-                step.template
-              );
+      if (workflowReference.workflow.steps.length === 0) return;
+
+      const workflow = workflowReference.workflow;
+      if (
+        workflow.trigger === WorkflowTriggerEvents.BEFORE_EVENT ||
+        (workflow.trigger === WorkflowTriggerEvents.NEW_EVENT &&
+          !isRescheduleEvent &&
+          isFirstRecurringEvent) ||
+        (workflow.trigger === WorkflowTriggerEvents.RESCHEDULE_EVENT && isRescheduleEvent) ||
+        workflow.trigger === WorkflowTriggerEvents.AFTER_EVENT
+      ) {
+        workflow.steps.forEach(async (step) => {
+          if (step.action === WorkflowActions.SMS_ATTENDEE || step.action === WorkflowActions.SMS_NUMBER) {
+            const sendTo = step.action === WorkflowActions.SMS_ATTENDEE ? smsReminderNumber : step.sendTo;
+            await scheduleSMSReminder(
+              evt,
+              sendTo,
+              workflow.trigger,
+              step.action,
+              {
+                time: workflow.time,
+                timeUnit: workflow.timeUnit,
+              },
+              step.reminderBody || "",
+              step.id,
+              step.template,
+              step.sender || "Cal"
+            );
+          } else if (
+            step.action === WorkflowActions.EMAIL_ATTENDEE ||
+            step.action === WorkflowActions.EMAIL_HOST ||
+            step.action === WorkflowActions.EMAIL_ADDRESS
+          ) {
+            let sendTo = "";
+
+            switch (step.action) {
+              case WorkflowActions.EMAIL_HOST:
+                sendTo = evt.organizer.email;
+                break;
+              case WorkflowActions.EMAIL_ATTENDEE:
+                sendTo = evt.attendees[0].email;
+                break;
+              case WorkflowActions.EMAIL_ADDRESS:
+                sendTo = step.sendTo || "";
             }
-          });
-        }
+            scheduleEmailReminder(
+              evt,
+              workflow.trigger,
+              step.action,
+              {
+                time: workflow.time,
+                timeUnit: workflow.timeUnit,
+              },
+              sendTo,
+              step.emailSubject || "",
+              step.reminderBody || "",
+              step.id,
+              step.template
+            );
+          }
+        });
       }
     });
   }
@@ -101,14 +119,26 @@ export const sendCancelledReminders = async (
               },
               step.reminderBody || "",
               step.id,
-              step.template
+              step.template,
+              step.sender || "Cal"
             );
           } else if (
             step.action === WorkflowActions.EMAIL_ATTENDEE ||
-            step.action === WorkflowActions.EMAIL_HOST
+            step.action === WorkflowActions.EMAIL_HOST ||
+            step.action === WorkflowActions.EMAIL_ADDRESS
           ) {
-            const sendTo =
-              step.action === WorkflowActions.EMAIL_HOST ? evt.organizer.email : evt.attendees[0].email;
+            let sendTo = "";
+
+            switch (step.action) {
+              case WorkflowActions.EMAIL_HOST:
+                sendTo = evt.organizer.email;
+                break;
+              case WorkflowActions.EMAIL_ATTENDEE:
+                sendTo = evt.attendees[0].email;
+                break;
+              case WorkflowActions.EMAIL_ADDRESS:
+                sendTo = step.sendTo || "";
+            }
             scheduleEmailReminder(
               evt,
               workflow.trigger,

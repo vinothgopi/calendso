@@ -1,6 +1,9 @@
 import { BookingStatus, MembershipRole, Prisma, UserPermissionRole, UserPlan } from "@prisma/client";
 import { uuid } from "short-uuid";
 
+import dailyMeta from "@calcom/app-store/dailyvideo/_metadata";
+import googleMeetMeta from "@calcom/app-store/googlevideo/_metadata";
+import zoomMeta from "@calcom/app-store/zoomvideo/_metadata";
 import dayjs from "@calcom/dayjs";
 import { hashPassword } from "@calcom/lib/auth";
 import { DEFAULT_SCHEDULE, getAvailabilityFromSchedule } from "@calcom/lib/availability";
@@ -8,7 +11,6 @@ import { DEFAULT_SCHEDULE, getAvailabilityFromSchedule } from "@calcom/lib/avail
 import prisma from ".";
 import mainAppStore from "./seed-app-store";
 
-require("dotenv").config({ path: "../../.env" });
 async function createUserAndEventType(opts: {
   user: {
     email: string;
@@ -248,6 +250,14 @@ async function main() {
         length: 60,
       },
       {
+        title: "Multiple duration",
+        slug: "multiple-duration",
+        length: 75,
+        metadata: {
+          multipleDuration: [30, 75, 90],
+        },
+      },
+      {
         title: "paid",
         slug: "paid",
         length: 60,
@@ -263,19 +273,19 @@ async function main() {
         title: "Zoom Event",
         slug: "zoom",
         length: 60,
-        locations: [{ type: "integrations:zoom" }],
+        locations: [{ type: zoomMeta.appData?.location.type }],
       },
       {
         title: "Daily Event",
         slug: "daily",
         length: 60,
-        locations: [{ type: "integrations:daily" }],
+        locations: [{ type: dailyMeta.appData?.location.type }],
       },
       {
         title: "Google Meet",
         slug: "google-meet",
         length: 60,
-        locations: [{ type: "integrations:google:meet" }],
+        locations: [{ type: googleMeetMeta.appData?.location.type }],
       },
       {
         title: "Yoga class",
@@ -289,7 +299,7 @@ async function main() {
             recurringEventId: Buffer.from("yoga-class").toString("base64"),
             startTime: dayjs().add(1, "day").toDate(),
             endTime: dayjs().add(1, "day").add(30, "minutes").toDate(),
-            status: BookingStatus.PENDING,
+            status: BookingStatus.ACCEPTED,
           },
           {
             uid: uuid(),
@@ -297,7 +307,7 @@ async function main() {
             recurringEventId: Buffer.from("yoga-class").toString("base64"),
             startTime: dayjs().add(1, "day").add(1, "week").toDate(),
             endTime: dayjs().add(1, "day").add(1, "week").add(30, "minutes").toDate(),
-            status: BookingStatus.PENDING,
+            status: BookingStatus.ACCEPTED,
           },
           {
             uid: uuid(),
@@ -305,7 +315,7 @@ async function main() {
             recurringEventId: Buffer.from("yoga-class").toString("base64"),
             startTime: dayjs().add(1, "day").add(2, "week").toDate(),
             endTime: dayjs().add(1, "day").add(2, "week").add(30, "minutes").toDate(),
-            status: BookingStatus.PENDING,
+            status: BookingStatus.ACCEPTED,
           },
           {
             uid: uuid(),
@@ -313,7 +323,7 @@ async function main() {
             recurringEventId: Buffer.from("yoga-class").toString("base64"),
             startTime: dayjs().add(1, "day").add(3, "week").toDate(),
             endTime: dayjs().add(1, "day").add(3, "week").add(30, "minutes").toDate(),
-            status: BookingStatus.PENDING,
+            status: BookingStatus.ACCEPTED,
           },
           {
             uid: uuid(),
@@ -321,7 +331,7 @@ async function main() {
             recurringEventId: Buffer.from("yoga-class").toString("base64"),
             startTime: dayjs().add(1, "day").add(4, "week").toDate(),
             endTime: dayjs().add(1, "day").add(4, "week").add(30, "minutes").toDate(),
-            status: BookingStatus.PENDING,
+            status: BookingStatus.ACCEPTED,
           },
           {
             uid: uuid(),
@@ -329,7 +339,43 @@ async function main() {
             recurringEventId: Buffer.from("yoga-class").toString("base64"),
             startTime: dayjs().add(1, "day").add(5, "week").toDate(),
             endTime: dayjs().add(1, "day").add(5, "week").add(30, "minutes").toDate(),
-            status: BookingStatus.PENDING,
+            status: BookingStatus.ACCEPTED,
+          },
+          {
+            uid: uuid(),
+            title: "Seeded Yoga class",
+            description: "seeded",
+            recurringEventId: Buffer.from("seeded-yoga-class").toString("base64"),
+            startTime: dayjs().subtract(4, "day").toDate(),
+            endTime: dayjs().subtract(4, "day").add(30, "minutes").toDate(),
+            status: BookingStatus.ACCEPTED,
+          },
+          {
+            uid: uuid(),
+            title: "Seeded Yoga class",
+            description: "seeded",
+            recurringEventId: Buffer.from("seeded-yoga-class").toString("base64"),
+            startTime: dayjs().subtract(4, "day").add(1, "week").toDate(),
+            endTime: dayjs().subtract(4, "day").add(1, "week").add(30, "minutes").toDate(),
+            status: BookingStatus.ACCEPTED,
+          },
+          {
+            uid: uuid(),
+            title: "Seeded Yoga class",
+            description: "seeded",
+            recurringEventId: Buffer.from("seeded-yoga-class").toString("base64"),
+            startTime: dayjs().subtract(4, "day").add(2, "week").toDate(),
+            endTime: dayjs().subtract(4, "day").add(2, "week").add(30, "minutes").toDate(),
+            status: BookingStatus.ACCEPTED,
+          },
+          {
+            uid: uuid(),
+            title: "Seeded Yoga class",
+            description: "seeded",
+            recurringEventId: Buffer.from("seeded-yoga-class").toString("base64"),
+            startTime: dayjs().subtract(4, "day").add(3, "week").toDate(),
+            endTime: dayjs().subtract(4, "day").add(3, "week").add(30, "minutes").toDate(),
+            status: BookingStatus.ACCEPTED,
           },
         ],
       },
@@ -472,7 +518,8 @@ async function main() {
   await createUserAndEventType({
     user: {
       email: "admin@example.com",
-      password: "admin",
+      /** To comply with admin password requirements  */
+      password: "ADMINadmin2022!",
       username: "admin",
       name: "Admin Example",
       plan: "PRO",
@@ -536,6 +583,7 @@ async function main() {
           ],
         },
       },
+      createdAt: new Date(),
     },
     [
       {

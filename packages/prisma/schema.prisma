@@ -31,7 +31,7 @@ enum PeriodType {
 
 model EventType {
   id                      Int                     @id @default(autoincrement())
-  /// @zod.nonempty()
+  /// @zod.min(1)
   title                   String
   /// @zod.custom(imports.eventTypeSlug)
   slug                    String
@@ -68,16 +68,22 @@ model EventType {
   beforeEventBuffer       Int                     @default(0)
   afterEventBuffer        Int                     @default(0)
   seatsPerTimeSlot        Int?
+  seatsShowAttendees      Boolean?
   schedulingType          SchedulingType?
   schedule                Schedule?               @relation(fields: [scheduleId], references: [id])
   scheduleId              Int?
+  // price is deprecated. It has now moved to metadata.apps.stripe.price. Plan to drop this column.
   price                   Int                     @default(0)
+  // currency is deprecated. It has now moved to metadata.apps.stripe.currency. Plan to drop this column.
   currency                String                  @default("usd")
   slotInterval            Int?
+  /// @zod.custom(imports.EventTypeMetaDataSchema)
   metadata                Json?
   /// @zod.custom(imports.successRedirectUrl)
   successRedirectUrl      String?
   workflows               WorkflowsOnEventTypes[]
+  /// @zod.custom(imports.bookingLimitsType)
+  bookingLimits           Json?
 
   @@unique([userId, slug])
   @@unique([teamId, slug])
@@ -85,6 +91,7 @@ model EventType {
 
 model Credential {
   id                   Int                   @id @default(autoincrement())
+  // @@type is deprecated
   type                 String
   key                  Json
   user                 User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -93,6 +100,7 @@ model Credential {
   // How to make it a required column?
   appId                String?
   destinationCalendars DestinationCalendar[]
+  invalid              Boolean?
 }
 
 enum UserPlan {
@@ -111,13 +119,13 @@ model DestinationCalendar {
   id           Int         @id @default(autoincrement())
   integration  String
   externalId   String
-  user         User?       @relation(fields: [userId], references: [id])
+  user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId       Int?        @unique
   booking      Booking[]
-  eventType    EventType?  @relation(fields: [eventTypeId], references: [id])
+  eventType    EventType?  @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
   eventTypeId  Int?        @unique
   credentialId Int?
-  credential   Credential? @relation(fields: [credentialId], references: [id])
+  credential   Credential? @relation(fields: [credentialId], references: [id], onDelete: Cascade)
 }
 
 enum UserPermissionRole {
@@ -162,7 +170,7 @@ model User {
   identityProviderId   String?
   availability         Availability[]
   invitedTo            Int?
-  plan                 UserPlan                @default(TRIAL)
+  plan                 UserPlan                @default(PRO)
   webhooks             Webhook[]
   brandColor           String                  @default("#292929")
   darkBrandColor       String                  @default("#fafafa")
@@ -191,13 +199,18 @@ model User {
 
 model Team {
   id           Int          @id @default(autoincrement())
-  name         String?
+  /// @zod.min(1)
+  name         String
+  /// @zod.min(1)
   slug         String?      @unique
   logo         String?
   bio          String?
   hideBranding Boolean      @default(false)
   members      Membership[]
   eventTypes   EventType[]
+  createdAt    DateTime     @default(now())
+  /// @zod.custom(imports.teamMetadataSchema)
+  metadata     Json?
 }
 
 enum MembershipRole {
@@ -211,7 +224,7 @@ model Membership {
   userId               Int
   accepted             Boolean        @default(false)
   role                 MembershipRole
-  team                 Team           @relation(fields: [teamId], references: [id])
+  team                 Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   disableImpersonation Boolean        @default(false)
 
@@ -231,7 +244,9 @@ model VerificationToken {
 
 model BookingReference {
   id                 Int      @id @default(autoincrement())
+  /// @zod.min(1)
   type               String
+  /// @zod.min(1)
   uid                String
   meetingId          String?
   meetingPassword    String?
@@ -260,14 +275,6 @@ enum BookingStatus {
   PENDING   @map("pending")
 }
 
-model DailyEventReference {
-  id         Int      @id @default(autoincrement())
-  dailyurl   String   @default("dailycallurl")
-  dailytoken String   @default("dailytoken")
-  booking    Booking? @relation(fields: [bookingId], references: [id])
-  bookingId  Int?     @unique
-}
-
 model Booking {
   id                    Int                  @id @default(autoincrement())
   uid                   String               @unique
@@ -283,7 +290,6 @@ model Booking {
   endTime               DateTime
   attendees             Attendee[]
   location              String?
-  dailyRef              DailyEventReference?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime?
   status                BookingStatus        @default(ACCEPTED)
@@ -300,6 +306,7 @@ model Booking {
   recurringEventId      String?
   smsReminderNumber     String?
   workflowReminders     WorkflowReminder[]
+  scheduledJobs         String[]
 }
 
 model Schedule {
@@ -397,12 +404,14 @@ enum WebhookTriggerEvents {
   BOOKING_RESCHEDULED
   BOOKING_CANCELLED
   FORM_SUBMITTED
+  MEETING_ENDED
 }
 
 model Webhook {
   id              String                 @id @unique
   userId          Int?
   eventTypeId     Int?
+  /// @zod.url()
   subscriberUrl   String
   payloadTemplate String?
   createdAt       DateTime               @default(now())
@@ -413,6 +422,8 @@ model Webhook {
   app             App?                   @relation(fields: [appId], references: [slug], onDelete: Cascade)
   appId           String?
   secret          String?
+
+  @@unique([userId, subscriberUrl], name: "courseIdentifier")
 }
 
 model Impersonations {
@@ -478,6 +489,8 @@ enum AppCategories {
   payment
   video
   web3
+  automation
+  analytics
 }
 
 model App {
@@ -508,6 +521,8 @@ model App_RoutingForms_Form {
   userId      Int
   responses   App_RoutingForms_FormResponse[]
   disabled    Boolean                         @default(false)
+  /// @zod.custom(imports.RoutingFormSettings)
+  settings    Json?
 }
 
 model App_RoutingForms_FormResponse {
@@ -516,6 +531,7 @@ model App_RoutingForms_FormResponse {
   form         App_RoutingForms_Form @relation(fields: [formId], references: [id], onDelete: Cascade)
   formId       String
   response     Json
+  createdAt    DateTime              @default(now())
 
   @@unique([formFillerId, formId])
 }
@@ -533,6 +549,8 @@ enum WorkflowTriggerEvents {
   BEFORE_EVENT
   EVENT_CANCELLED
   NEW_EVENT
+  AFTER_EVENT
+  RESCHEDULE_EVENT
 }
 
 enum WorkflowActions {
@@ -540,6 +558,7 @@ enum WorkflowActions {
   EMAIL_ATTENDEE
   SMS_ATTENDEE
   SMS_NUMBER
+  EMAIL_ADDRESS
 }
 
 model WorkflowStep {
@@ -553,6 +572,8 @@ model WorkflowStep {
   emailSubject      String?
   template          WorkflowTemplates  @default(REMINDER)
   workflowReminders WorkflowReminder[]
+  numberRequired    Boolean?
+  sender            String?
 }
 
 model Workflow {
