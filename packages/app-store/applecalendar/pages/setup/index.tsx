@@ -4,9 +4,7 @@ import { useForm } from "react-hook-form";
 import { Toaster } from "react-hot-toast";
 
 import { useLocale } from "@calcom/lib/hooks/useLocale";
-import { Alert } from "@calcom/ui/Alert";
-import Button from "@calcom/ui/Button";
-import { Form, TextField } from "@calcom/ui/form/fields";
+import { Alert, Button, Form, TextField } from "@calcom/ui";
 
 export default function AppleCalendarSetup() {
   const { t } = useLocale();
@@ -70,8 +68,8 @@ export default function AppleCalendarSetup() {
                     required
                     type="text"
                     {...form.register("username")}
-                    label={t("username")}
-                    placeholder="rickroll"
+                    label="Apple ID"
+                    placeholder="appleid@domain.com"
                   />
                   <TextField
                     required

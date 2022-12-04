@@ -1,20 +1,23 @@
-import { UserPlan } from "@prisma/client";
+import MarkdownIt from "markdown-it";
 import { GetStaticPaths, GetStaticPropsContext } from "next";
 import { JSONObject } from "superjson/dist/types";
 import { z } from "zod";
 
-import { locationHiddenFilter, LocationObject } from "@calcom/app-store/locations";
+import { privacyFilteredLocations, LocationObject } from "@calcom/app-store/locations";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { getDefaultEvent, getGroupName, getUsernameList } from "@calcom/lib/defaultEvents";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { parseRecurringEvent } from "@calcom/lib/isRecurringEvent";
 import prisma from "@calcom/prisma";
+import { User } from "@calcom/prisma/client";
+import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 
 import { inferSSRProps } from "@lib/types/inferSSRProps";
+import { EmbedProps } from "@lib/withEmbedSsr";
 
 import AvailabilityPage from "@components/booking/pages/AvailabilityPage";
 
-export type AvailabilityPageProps = inferSSRProps<typeof getStaticProps>;
+export type AvailabilityPageProps = inferSSRProps<typeof getStaticProps> & EmbedProps;
 
 export default function Type(props: AvailabilityPageProps) {
   const { t } = useLocale();
@@ -34,8 +37,8 @@ export default function Type(props: AvailabilityPageProps) {
         </div>
       </main>
     </div>
-  ) : props.isDynamic /* && !props.profile.allowDynamicBooking TODO: Re-enable after v1.7 launch */ ? (
-    <div className="h-screen dark:bg-neutral-900">
+  ) : props.isDynamic && !props.profile.allowDynamicBooking ? (
+    <div className="dark:bg-darkgray-50 h-screen">
       <main className="mx-auto max-w-3xl px-4 py-24">
         <div className="space-y-6" data-testid="event-types">
           <div className="overflow-hidden rounded-sm border dark:border-gray-900">
@@ -77,8 +80,27 @@ async function getUserPageProps(context: GetStaticPropsContext) {
       brandColor: true,
       darkBrandColor: true,
       eventTypes: {
-        select: { id: true },
-        // Order by position is important to ensure that the event-type that's enabled is the first in the list because for Free user only first is allowed.
+        where: {
+          // Many-to-many relationship causes inclusion of the team events - cool -
+          // but to prevent these from being selected, make sure the teamId is NULL.
+          AND: [{ slug }, { teamId: null }],
+        },
+        select: {
+          title: true,
+          slug: true,
+          hidden: true,
+          recurringEvent: true,
+          length: true,
+          locations: true,
+          id: true,
+          description: true,
+          price: true,
+          currency: true,
+          requiresConfirmation: true,
+          schedulingType: true,
+          metadata: true,
+          seatsPerTimeSlot: true,
+        },
         orderBy: [
           {
             position: "desc",
@@ -91,95 +113,56 @@ async function getUserPageProps(context: GetStaticPropsContext) {
     },
   });
 
-  if (!user) return { notFound: true };
+  const md = new MarkdownIt("zero").enable([
+    //
+    "emphasis",
+    "list",
+    "newline",
+    "strikethrough",
+  ]);
 
-  const eventTypeIds = user.eventTypes.map((e) => e.id);
-  const eventTypes = await prisma.eventType.findMany({
-    where: {
-      slug,
-      /* Free users can only display their first eventType */
-      id: user.plan === UserPlan.FREE ? eventTypeIds[0] : undefined,
-      AND: [{ OR: [{ userId: user.id }, { users: { some: { id: user.id } } }] }],
-    },
-    // Order is important to ensure that given a slug if there are duplicates, we choose the same event type consistently when showing in event-types list UI(in terms of ordering and disabled event types)
-    // TODO: If we can ensure that there are no duplicates for a [slug, userId] combination in existing data, this requirement might be avoided.
-    orderBy: [
-      {
-        position: "desc",
-      },
-      {
-        id: "asc",
-      },
-    ],
-    select: {
-      title: true,
-      slug: true,
-      hidden: true,
-      recurringEvent: true,
-      length: true,
-      locations: true,
-      id: true,
-      description: true,
-      price: true,
-      currency: true,
-      requiresConfirmation: true,
-      schedulingType: true,
-      metadata: true,
-      seatsPerTimeSlot: true,
-      users: {
-        select: {
-          name: true,
-          username: true,
-          hideBranding: true,
-          brandColor: true,
-          darkBrandColor: true,
-          theme: true,
-          plan: true,
-          allowDynamicBooking: true,
-          timeZone: true,
+  if (!user || !user.eventTypes) return { notFound: true };
+
+  const [eventType]: (typeof user.eventTypes[number] & {
+    users: Pick<User, "name" | "username" | "hideBranding" | "plan" | "timeZone">[];
+  })[] = [
+    {
+      ...user.eventTypes[0],
+      users: [
+        {
+          name: user.name,
+          username: user.username,
+          hideBranding: user.hideBranding,
+          plan: user.plan,
+          timeZone: user.timeZone,
         },
-      },
+      ],
     },
-  });
-
-  if (!eventTypes) return { notFound: true };
-
-  const [eventType] = eventTypes;
+  ];
 
   if (!eventType) return { notFound: true };
 
+  //TODO: Use zodSchema to verify it instead of using Type Assertion
   const locations = eventType.locations ? (eventType.locations as LocationObject[]) : [];
-
   const eventTypeObject = Object.assign({}, eventType, {
-    metadata: (eventType.metadata || {}) as JSONObject,
+    metadata: EventTypeMetaDataSchema.parse(eventType.metadata || {}),
     recurringEvent: parseRecurringEvent(eventType.recurringEvent),
-    locations: locationHiddenFilter(locations),
-    users: eventType.users.map((user) => ({
-      name: user.name,
-      username: user.username,
-      hideBranding: user.hideBranding,
-      plan: user.plan,
-      timeZone: user.timeZone,
-    })),
+    locations: privacyFilteredLocations(locations),
+    descriptionAsSafeHTML: eventType.description ? md.render(eventType.description) : null,
   });
-
-  const profile = eventType.users[0] || user;
 
   return {
     props: {
       eventType: eventTypeObject,
       profile: {
+        ...eventType.users[0],
         theme: user.theme,
-        name: user.name,
-        username: user.username,
-        hideBranding: user.hideBranding,
-        plan: user.plan,
-        timeZone: user.timeZone,
+        allowDynamicBooking: false,
         weekStart: user.weekStart,
         brandColor: user.brandColor,
         darkBrandColor: user.darkBrandColor,
-        slug: `${profile.username}/${eventType.slug}`,
-        image: `${WEBAPP_URL}/${profile.username}/avatar.png`,
+        slug: `${user.username}/${eventType.slug}`,
+        image: `${WEBAPP_URL}/${user.username}/avatar.png`,
       },
       away: user?.away,
       isDynamic: false,
@@ -240,11 +223,10 @@ async function getDynamicGroupPageProps(context: GetStaticPropsContext) {
   }
 
   const locations = eventType.locations ? (eventType.locations as LocationObject[]) : [];
-
   const eventTypeObject = Object.assign({}, eventType, {
-    metadata: (eventType.metadata || {}) as JSONObject,
+    metadata: EventTypeMetaDataSchema.parse(eventType.metadata || {}),
     recurringEvent: parseRecurringEvent(eventType.recurringEvent),
-    locations: locationHiddenFilter(locations),
+    locations: privacyFilteredLocations(locations),
     users: users.map((user) => {
       return {
         name: user.name,

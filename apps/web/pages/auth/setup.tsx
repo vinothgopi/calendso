@@ -1,5 +1,7 @@
 import { CheckIcon } from "@heroicons/react/solid";
 import { zodResolver } from "@hookform/resolvers/zod";
+import classNames from "classnames";
+import { GetServerSidePropsContext } from "next";
 import { useRouter } from "next/router";
 import { useState } from "react";
 import { Controller, FormProvider, useForm } from "react-hook-form";
@@ -9,8 +11,9 @@ import { isPasswordValid } from "@calcom/lib/auth";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import prisma from "@calcom/prisma";
 import { inferSSRProps } from "@calcom/types/inferSSRProps";
-import WizardForm from "@calcom/ui/v2/WizardForm";
-import { TextField, PasswordField, EmailField } from "@calcom/ui/v2/form/fields";
+import { EmailField, Label, PasswordField, TextField, WizardForm } from "@calcom/ui";
+
+import { ssrInit } from "@server/lib/ssr";
 
 const StepDone = () => {
   const { t } = useLocale();
@@ -38,7 +41,8 @@ const SetupFormStep1 = (props: { setIsLoading: (val: boolean) => void }) => {
     email_address: z.string().email({ message: t("enter_valid_email") }),
     full_name: z.string().min(3, t("at_least_characters", { count: 3 })),
     password: z.string().superRefine((data, ctx) => {
-      const result = isPasswordValid(data, true);
+      const isStrict = true;
+      const result = isPasswordValid(data, true, isStrict);
       Object.keys(result).map((key: string) => {
         if (!result[key as keyof typeof result]) {
           ctx.addIssue({
@@ -85,30 +89,46 @@ const SetupFormStep1 = (props: { setIsLoading: (val: boolean) => void }) => {
     }
   }, onError);
 
+  const longWebsiteUrl = process.env.NEXT_PUBLIC_WEBSITE_URL.length > 30;
+
   return (
     <FormProvider {...formMethods}>
-      <form id="setup-step-1" name="setup-step-1" className="space-y-4" onSubmit={onSubmit}>
+      <form id="wizard-step-1" name="wizard-step-1" className="space-y-4" onSubmit={onSubmit}>
         <div>
           <Controller
             name="username"
             control={formMethods.control}
             render={({ field: { onBlur, onChange, value } }) => (
-              <TextField
-                addOnLeading={
-                  <span className="items-centerpx-3 inline-flex rounded-none text-sm text-gray-500">
-                    {process.env.NEXT_PUBLIC_WEBSITE_URL}/
-                  </span>
-                }
-                value={value || ""}
-                className="my-0"
-                onBlur={onBlur}
-                name="username"
-                onChange={async (e) => {
-                  onChange(e.target.value);
-                  formMethods.setValue("username", e.target.value);
-                  await formMethods.trigger("username");
-                }}
-              />
+              <>
+                <Label htmlFor="username" className={classNames(longWebsiteUrl && "mb-0")}>
+                  <span className="block">{t("username")}</span>
+                  {longWebsiteUrl && (
+                    <small className="items-centerpx-3 mt-2 inline-flex rounded-t-md border border-b-0 border-gray-300 bg-gray-100 py-1 px-3 text-gray-500">
+                      {process.env.NEXT_PUBLIC_WEBSITE_URL}
+                    </small>
+                  )}
+                </Label>
+                <TextField
+                  addOnLeading={
+                    !longWebsiteUrl && (
+                      <span className="items-centerpx-3 inline-flex rounded-none text-sm text-gray-500">
+                        {process.env.NEXT_PUBLIC_WEBSITE_URL}/
+                      </span>
+                    )
+                  }
+                  id="username"
+                  labelSrOnly={true}
+                  value={value || ""}
+                  className={classNames("my-0", longWebsiteUrl && "rounded-t-none")}
+                  onBlur={onBlur}
+                  name="username"
+                  onChange={async (e) => {
+                    onChange(e.target.value);
+                    formMethods.setValue("username", e.target.value);
+                    await formMethods.trigger("username");
+                  }}
+                />
+              </>
             )}
           />
         </div>
@@ -168,7 +188,7 @@ const SetupFormStep1 = (props: { setIsLoading: (val: boolean) => void }) => {
                   formMethods.setValue("password", e.target.value);
                   await formMethods.trigger("password");
                 }}
-                hintErrors={["caplow", "min", "num"]}
+                hintErrors={["caplow", "admin_min", "num"]}
                 name="password"
                 className="my-0"
                 autoComplete="off"
@@ -204,10 +224,13 @@ export default function Setup(props: inferSSRProps<typeof getServerSideProps>) {
   );
 }
 
-export const getServerSideProps = async () => {
+export const getServerSideProps = async (context: GetServerSidePropsContext) => {
+  const ssr = await ssrInit(context);
   const userCount = await prisma.user.count();
+
   return {
     props: {
+      trpcState: ssr.dehydrate(),
       userCount,
     },
   };
