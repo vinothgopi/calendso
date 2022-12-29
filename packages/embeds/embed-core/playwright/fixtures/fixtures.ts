@@ -1,6 +1,6 @@
 import { test as base, Page } from "@playwright/test";
 
-interface Fixtures {
+export interface Fixtures {
   addEmbedListeners: (calNamespace: string) => Promise<void>;
   getActionFiredDetails: (a: { calNamespace: string; actionType: string }) => Promise<any>;
 }
@@ -18,7 +18,7 @@ export const test = base.extend<Fixtures>({
 
               // eslint-disable-next-line @typescript-eslint/ban-ts-comment
               //@ts-ignore
-              window.initialBodyDisplay = document.body.style.display;
+              window.initialBodyVisibility = document.body.style.visibility;
 
               // eslint-disable-next-line @typescript-eslint/ban-ts-comment
               //@ts-ignore

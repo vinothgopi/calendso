@@ -1,4 +1,4 @@
-import type { App } from "@calcom/types/App";
+import type { AppMeta } from "@calcom/types/App";
 
 import _package from "./package.json";
 
@@ -10,16 +10,17 @@ export const metadata = {
   title: "Lark Calendar",
   imageSrc: "/api/app-store/larkcalendar/icon.svg",
   variant: "calendar",
-  category: "calendar",
+  categories: ["calendar"],
   logo: "/api/app-store/larkcalendar/icon.svg",
-  publisher: "Cal.com",
+  publisher: "Lark",
   rating: 5,
   reviews: 69,
   slug: "lark-calendar",
   trending: false,
-  url: "https://cal.com/",
+  url: "https://larksuite.com/",
   verified: true,
-  email: "help@cal.com",
-} as App;
+  email: "alan@larksuite.com",
+  dirName: "larkcalendar",
+} as AppMeta;
 
 export default metadata;
