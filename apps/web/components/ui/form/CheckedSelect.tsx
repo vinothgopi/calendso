@@ -2,7 +2,7 @@ import React from "react";
 import { Props } from "react-select";
 
 import { useLocale } from "@calcom/lib/hooks/useLocale";
-import { Icon } from "@calcom/ui/Icon";
+import { Icon } from "@calcom/ui";
 
 import Avatar from "@components/ui/Avatar";
 import Select from "@components/ui/form/Select";
@@ -35,17 +35,6 @@ export const CheckedSelect = ({
         name={props.name}
         placeholder={props.placeholder || t("select")}
         isSearchable={false}
-        formatOptionLabel={({ label, avatar, disabled }) => (
-          <div className="flex">
-            <Avatar className="mr-3 h-6 w-6 rounded-full" alt={label} imageSrc={avatar} />
-            {label}
-            {disabled && (
-              <div className="flex-grow">
-                <Icon.FiCheck className="float-right h-6 w-6 text-neutral-500" />
-              </div>
-            )}
-          </div>
-        )}
         options={options}
         value={value}
         isMulti
